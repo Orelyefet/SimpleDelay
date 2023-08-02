@@ -95,7 +95,8 @@ void SimpleDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     const int numInputChannels = getTotalNumInputChannels();
     // It will give 2 seconds of audio that allows access to the past.
-    const int delayBufferSize = 2 * (sampleRate * samplesPerBlock);
+    const int delayBufferSize = 2 * (sampleRate + samplesPerBlock);
+    mSampleRate = sampleRate;
     
     mDelayBuffer.setSize(numInputChannels, delayBufferSize);
 }
@@ -141,16 +142,61 @@ void SimpleDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
     
+    const int bufferLength = buffer.getNumSamples();
+    const int delayBufferLength = mDelayBuffer.getNumSamples();
+    
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
-        const int bufferLength = buffer.getNumSamples();
-        const int delayBufferLength = mDelayBuffer.getNumSamples();
         
         // Read pointers
         const float* bufferData = buffer.getReadPointer(channel);
         const float* delayBufferData = mDelayBuffer.getReadPointer(channel);
         
-        // Copy the data from main buffer to delay buffer
+        fillDelayBuffer(channel, bufferLength, delayBufferLength, bufferData, delayBufferData);
+        getDataFromDelayBuffer(buffer, channel, bufferLength, delayBufferLength, bufferData, delayBufferData);
+        
+    }
+    
+    // Move the mWright position
+    mWritePosition += bufferLength;
+    
+    // Wrap around when getting to the very end of the delay
+    mWritePosition %= delayBufferLength;
+}
+
+void SimpleDelayAudioProcessor::fillDelayBuffer(int channel, const int bufferLength, const int delayBufferLength,
+                                                const float* bufferData, const float* delayBufferData)
+{
+    // Copy the data from main buffer to delay buffer
+    if (delayBufferLength > bufferLength + mWritePosition)
+    {
+        mDelayBuffer.copyFromWithRamp(channel, mWritePosition, bufferData, bufferLength, 0.8, 0.8);
+    }
+    else
+    {
+        const int bufferRemaining = delayBufferLength - mWritePosition;
+        
+        mDelayBuffer.copyFromWithRamp(channel, mWritePosition, bufferData, bufferRemaining, 0.8, 0.8);
+        mDelayBuffer.copyFromWithRamp(channel, 0, bufferData, bufferLength - bufferRemaining, 0.8, 0.8);
+    }
+}
+
+void SimpleDelayAudioProcessor::getDataFromDelayBuffer (juce::AudioBuffer<float>& buffer, int channel,
+                                                        const int bufferLength, const int delayBufferLength, const float* bufferData,
+                                                        const float* delayBufferData)
+{
+    int delayTime = 50;
+    const int readPosition = static_cast<int> (delayBufferLength + mWritePosition - (mSampleRate * delayTime / 1000)) % delayBufferLength;
+    
+    if(delayBufferLength > bufferLength + readPosition)
+    {
+        buffer.addFrom(channel, 0, delayBufferData + readPosition, bufferLength);
+    }
+    else
+    {
+        const int bufferRemaining = delayBufferLength - readPosition;
+        buffer.addFrom(channel, 0, delayBufferData + readPosition, bufferRemaining);
+        buffer.addFrom(channel, bufferRemaining, delayBufferData, bufferLength - bufferRemaining);
     }
 }
 
