@@ -59,6 +59,7 @@ public:
 private:
     // Create another AudioBuffer
     juce::AudioBuffer<float> mDelayBuffer;
+    int mWritePosition {0};
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleDelayAudioProcessor)
