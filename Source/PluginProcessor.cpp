@@ -93,8 +93,11 @@ void SimpleDelayAudioProcessor::changeProgramName (int index, const juce::String
 //==============================================================================
 void SimpleDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    const int numInputChannels = getTotalNumInputChannels();
+    // It will give 2 seconds of audio that allows access to the past.
+    const int delayBufferSize = 2 * (sampleRate * samplesPerBlock);
+    
+    mDelayBuffer.setSize(numInputChannels, delayBufferSize);
 }
 
 void SimpleDelayAudioProcessor::releaseResources()
