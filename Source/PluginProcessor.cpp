@@ -137,7 +137,9 @@ void SimpleDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+    {
         buffer.clear (i, 0, buffer.getNumSamples());
+    }
     
     auto bufferSize = buffer.getNumSamples();
     auto delayBufferSize = delayBuffer.getNumSamples();
@@ -147,6 +149,25 @@ void SimpleDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         auto* channelData = buffer.getWritePointer (channel);
         
         fillBuffer(channel, bufferSize, delayBufferSize, channelData);
+        
+        // One second of audio from in the past
+        auto readPosition = writePosition - getSampleRate();
+        
+        if (readPosition < 0)
+            readPosition += delayBufferSize;
+        
+        if (readPosition + bufferSize < delayBufferSize)
+        {
+            buffer.addFromWithRamp(channel, 0, delayBuffer.getReadPointer(channel, readPosition), bufferSize, 0.7f, 0.7f);
+        }
+        else
+        {
+            auto numSamplesToEnd = delayBufferSize - readPosition;
+            buffer.addFromWithRamp(channel, 0, delayBuffer.getReadPointer(channel, readPosition), numSamplesToEnd, 0.7f, 0.7f);
+            
+            auto numSamplesAtStart = bufferSize - numSamplesToEnd;
+            buffer.addFromWithRamp(channel, numSamplesToEnd, delayBuffer.getReadPointer(channel, 0), numSamplesAtStart, 0.7f, 0.7f);
+        }
     }
     
     DBG("Delay Buffer Size: " << delayBufferSize);
@@ -176,7 +197,7 @@ void SimpleDelayAudioProcessor::fillBuffer(int channel, int bufferSize, int dela
         // Calculate how much contetns is remaining to copy
         auto numSamplesAtStart = bufferSize - numSamplesToEnd;
         
-        delayBuffer.copyFromWithRamp(channel, 0, channelData, numSamplesAtStart, 0.1f, 0.1f);
+        delayBuffer.copyFromWithRamp(channel, 0, channelData + numSamplesToEnd, numSamplesAtStart, 0.1f, 0.1f);
     }
 }
 
