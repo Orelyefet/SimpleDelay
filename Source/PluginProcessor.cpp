@@ -93,8 +93,9 @@ void SimpleDelayAudioProcessor::changeProgramName (int index, const juce::String
 //==============================================================================
 void SimpleDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    auto delayBufferSize = sampleRate * 2.0;
+    DBG("delayBufferSize: " << delayBufferSize);
+    delayBuffer.setSize(getTotalNumOutputChannels(), static_cast<int>(delayBufferSize));
 }
 
 void SimpleDelayAudioProcessor::releaseResources()
