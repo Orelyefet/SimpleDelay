@@ -96,6 +96,7 @@ void SimpleDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     auto delayBufferSize = sampleRate * 2.0;
     DBG("delayBufferSize: " << delayBufferSize);
     delayBuffer.setSize(getTotalNumOutputChannels(), static_cast<int>(delayBufferSize));
+    delayBuffer.clear();
 }
 
 void SimpleDelayAudioProcessor::releaseResources()
