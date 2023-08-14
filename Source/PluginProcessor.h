@@ -62,11 +62,10 @@ public:
     void getDataFromDelayBuffer (juce::AudioBuffer<float>& buffer, int channel,
                                  const int bufferLength, const int delayBufferLength, const float* bufferData, const float* delayBufferData);
 private:
-    // Create another AudioBuffer
-    juce::AudioBuffer<float> mDelayBuffer;
-    int mWritePosition {0};
-    int mSampleRate {44100};
+    juce::AudioBuffer<float> delayBuffer;
+    int writePosition {0};
     
+    void fillBuffer(int channel, int bufferSize, int delayBufferSize, float* channelData);
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleDelayAudioProcessor)
 };

@@ -93,12 +93,10 @@ void SimpleDelayAudioProcessor::changeProgramName (int index, const juce::String
 //==============================================================================
 void SimpleDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    const int numInputChannels = getTotalNumInputChannels();
-    // It will give 2 seconds of audio that allows access to the past.
-    const int delayBufferSize = 2 * (sampleRate + samplesPerBlock);
-    mSampleRate = sampleRate;
-    
-    mDelayBuffer.setSize(numInputChannels, delayBufferSize);
+    auto delayBufferSize = sampleRate * 2.0;
+    DBG("delayBufferSize: " << delayBufferSize);
+    delayBuffer.setSize(getTotalNumOutputChannels(), static_cast<int>(delayBufferSize));
+    delayBuffer.clear();
 }
 
 void SimpleDelayAudioProcessor::releaseResources()
@@ -138,66 +136,69 @@ void SimpleDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
-    
+
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+    {
         buffer.clear (i, 0, buffer.getNumSamples());
+    }
     
-    const int bufferLength = buffer.getNumSamples();
-    const int delayBufferLength = mDelayBuffer.getNumSamples();
-    
+    auto bufferSize = buffer.getNumSamples();
+    auto delayBufferSize = delayBuffer.getNumSamples();
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
+        auto* channelData = buffer.getWritePointer (channel);
         
-        // Read pointers
-        const float* bufferData = buffer.getReadPointer(channel);
-        const float* delayBufferData = mDelayBuffer.getReadPointer(channel);
+        fillBuffer(channel, bufferSize, delayBufferSize, channelData);
         
-        fillDelayBuffer(channel, bufferLength, delayBufferLength, bufferData, delayBufferData);
-        getDataFromDelayBuffer(buffer, channel, bufferLength, delayBufferLength, bufferData, delayBufferData);
+        // One second of audio from in the past
+        auto readPosition = writePosition - getSampleRate();
         
+        if (readPosition < 0)
+            readPosition += delayBufferSize;
+        
+        if (readPosition + bufferSize < delayBufferSize)
+        {
+            buffer.addFromWithRamp(channel, 0, delayBuffer.getReadPointer(channel, readPosition), bufferSize, 0.7f, 0.7f);
+        }
+        else
+        {
+            auto numSamplesToEnd = delayBufferSize - readPosition;
+            buffer.addFromWithRamp(channel, 0, delayBuffer.getReadPointer(channel, readPosition), numSamplesToEnd, 0.7f, 0.7f);
+            
+            auto numSamplesAtStart = bufferSize - numSamplesToEnd;
+            buffer.addFromWithRamp(channel, numSamplesToEnd, delayBuffer.getReadPointer(channel, 0), numSamplesAtStart, 0.7f, 0.7f);
+        }
     }
     
-    // Move the mWright position
-    mWritePosition += bufferLength;
+    DBG("Delay Buffer Size: " << delayBufferSize);
+    DBG("Buffer Size: " << bufferSize);
+    DBG("Write Position: " << writePosition);
     
-    // Wrap around when getting to the very end of the delay
-    mWritePosition %= delayBufferLength;
+    writePosition += bufferSize;
+    writePosition %= delayBufferSize;
 }
 
-void SimpleDelayAudioProcessor::fillDelayBuffer(int channel, const int bufferLength, const int delayBufferLength,
-                                                const float* bufferData, const float* delayBufferData)
+void SimpleDelayAudioProcessor::fillBuffer(int channel, int bufferSize, int delayBufferSize, float* channelData)
 {
-    // Copy the data from main buffer to delay buffer
-    if (delayBufferLength > bufferLength + mWritePosition)
+    // Check to see if main buffer copies to delay buffer without needing to wrap
+    if (delayBufferSize > bufferSize + writePosition)
     {
-        mDelayBuffer.copyFromWithRamp(channel, mWritePosition, bufferData, bufferLength, 0.8, 0.8);
+        // copy main buffer contents to delay buffer
+        delayBuffer.copyFromWithRamp(channel, writePosition, channelData, bufferSize, 0.1f, 0.1f);
     }
     else
     {
-        const int bufferRemaining = delayBufferLength - mWritePosition;
+        // Determine how much space is left at the end of the delay buffer
+        auto numSamplesToEnd = delayBufferSize - writePosition;
         
-        mDelayBuffer.copyFromWithRamp(channel, mWritePosition, bufferData, bufferRemaining, 0.8, 0.8);
-        mDelayBuffer.copyFromWithRamp(channel, 0, bufferData, bufferLength - bufferRemaining, 0.8, 0.8);
-    }
-}
-
-void SimpleDelayAudioProcessor::getDataFromDelayBuffer (juce::AudioBuffer<float>& buffer, int channel,
-                                                        const int bufferLength, const int delayBufferLength, const float* bufferData,
-                                                        const float* delayBufferData)
-{
-    int delayTime = 50;
-    const int readPosition = static_cast<int> (delayBufferLength + mWritePosition - (mSampleRate * delayTime / 1000)) % delayBufferLength;
-    
-    if(delayBufferLength > bufferLength + readPosition)
-    {
-        buffer.addFrom(channel, 0, delayBufferData + readPosition, bufferLength);
-    }
-    else
-    {
-        const int bufferRemaining = delayBufferLength - readPosition;
-        buffer.addFrom(channel, 0, delayBufferData + readPosition, bufferRemaining);
-        buffer.addFrom(channel, bufferRemaining, delayBufferData, bufferLength - bufferRemaining);
-    }
+        // Copy that amount of contents to the end
+        delayBuffer.copyFromWithRamp(channel, writePosition, channelData, numSamplesToEnd, 0.1f, 0.1f);
+        
+        // Calculate how much contetns is remaining to copy
+        auto numSamplesAtStart = bufferSize - numSamplesToEnd;
+        
+        delayBuffer.copyFromWithRamp(channel, 0, channelData + numSamplesToEnd, numSamplesAtStart, 0.1f, 0.1f);
 }
 
 //==============================================================================
